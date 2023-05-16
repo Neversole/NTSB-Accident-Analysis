@@ -1,0 +1,466 @@
+---
+title: "NTSB Aviation Data - Exploratory Data Analysis"
+author: "Team 9"
+date: "2023-02-20"
+output:
+  #word_document: default
+  #html_document: default
+  pdf_document: default
+---
+
+# Intro/Explanation
+
+Exploratory data analysis (EDA) is a process of examining and analyzing data to extract insights and identify patterns. In this case, we have a dataset of aircraft incidents which have been reported around the Globe. For our purposes, however, we need to filter it down to United States only. Here are some steps for conducting an EDA on this dataset: 
+
+Check the data types and missing values: 
+
+First, we should check the data types of each column to make sure they are correct. We can also check if there are any missing values in the dataset. 
+Explore the distributions of the numerical columns: 
+
+We can use histograms or box plots to visualize the distributions of the numerical columns (Latitude and Longitude). This can help us understand the range of values and identify any potential outliers. 
+
+Explore the categorical columns: 
+
+We can create bar charts or pie charts to visualize the frequency distribution of the categorical columns (ICAO.Code, IATA.Code, Airport.Name, City, and Country). This can help us understand the distribution of airports across different regions. 
+
+Look for correlations: 
+
+We can use scatter plots or correlation matrices to identify any correlations between the numerical columns (Latitude and Longitude). This can help us understand the relationships between the variables and identify any potential patterns. 
+
+Identify any potential outliers or anomalies: 
+
+We can use box plots or scatter plots to identify any potential outliers or anomalies in the data. This can help us understand if there are any unusual values that might be errors or require further investigation. 
+
+Compare airports: 
+
+We can create separate visualizations for the airports to compare their distributions and identify any differences or similarities. 
+
+Overall, an EDA can help us understand the characteristics of the dataset and identify any potential issues or opportunities for further analysis. 
+
+# Data Cleaning/Reformatting
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+```
+
+```{r}
+library(readr)
+GlobalAirportDatabase <- read_csv("../Data/GlobalAirportDatabase.csv")
+AviationData_Reshaped <- read_csv("../Data/Additional Datasets/AviationData_Reshaped.csv")
+List_of_commercial_jet_airliners <- read_csv("../Data/Additional Datasets/List_of_commercial_jet_airliners.csv")
+attach(AviationData_Reshaped)
+library(dplyr)
+library(tidyr)
+```
+
+Before doing any analysis on our dataset, we altered the table to remove null values and filter the data for a number of specifications given by our liason. We also changed the granularity of several columns for analysis purposes later on.
+
+## Changelog:
+
+```{r}
+## Store temp data subset
+sub <- AviationData_Reshaped
+```
+ -Store only US data
+```{r}
+sub <- sub %>% filter(Country == "USA")
+```
+ -Store only data from post 2001
+```{r}
+sub$Event.Date <- as.Date(sub$Event.Date, "%m/%d/%Y")
+sub <- sub %>% filter(Event.Date > '2001-12-31')
+```
+ -Store only data about Airplanes
+```{r}
+sub <- sub %>% filter(Aircraft.Category %in% c('Airplane', NA))
+```
+
+ -Remove na values from make and model (DROPS about 20 rows)
+```{r}
+sub <- sub %>% filter(Make != "N/A", Make != "NA", Model != "N/A", Model != "NA")
+```
+
+ -Remove aircraft which have been designated as commercial aircraft (using additional dataset)
+```{r}
+List_of_commercial_jet_airliners <- read_csv("/cloud/project/Data/Additional Datasets/List_of_commercial_jet_airliners.csv")
+
+attach(List_of_commercial_jet_airliners)
+new <- sub %>% filter(Model %in% List_of_commercial_jet_airliners$Model)
+sub <- sub[!(sub$Event.Id %in% new$Event.Id),]
+```
+
+ -Remove aircraft with 40 or more passengers total (Counting inj, non-inj)
+```{r}
+new = sub %>%
+  mutate_at(c('Total.Fatal.Injuries', "Total.Serious.Injuries", "Total.Minor.Injuries", "Total.Uninjured"), ~replace_na(.,0)) %>%
+  mutate(sum = rowSums(.[25:28])) %>%
+  filter(sum < 40)
+sub <- select(new, -c("sum"))
+```
+
+ -Fill na values for long, lat using Global Airport Database csv
+ -Reformat $Location to include city name and country
+```{r}
+new = GlobalAirportDatabase %>% filter(Country == "USA")
+new = select(new, c("Airport.Name", "City", "Latitude", "Longitude"))
+new = new %>% filter(Latitude != 0, Longitude != 0, City != "DILLINGHAM", Airport.Name != "SAWYER INTERNATIONAL")
+
+sub <- rows_patch(sub, new, by = c("Airport.Name", "City"), unmatched = 'ignore')
+
+```
+ -Remove Columns (Publication.Date, Schedule, Accident.Number, Registration.Number, Air.carrier, Investigation.Type)
+```{r}
+sub <- select(sub, -c("Publication.Date", "Schedule", "Accident.Number", "Registration.Number", "Air.carrier", "Investigation.Type"))
+```
+
+ -Reformat Amateur.built column to "Y/N" format
+ -Remove Nulls from Amateur.built column
+```{r}
+#Change Amateaur.built values Y and N to Yes and No
+sub$Amateur.Built[sub$Amateur.Built == "Y"] <- "Yes"
+sub$Amateur.Built[sub$Amateur.Built == "N"] <- "No"
+
+#Remove na values from Amateur.Built
+sub <- sub %>% filter(Amateur.Built != "N/A", Amateur.Built != "NA")
+```
+
+ -Remove Nulls and unknown values from Aircraft.damage column
+```{r}
+#Remove na and unknown values from Amateur.Built
+sub <- sub %>% filter(Aircraft.damage != "N/A", Aircraft.damage != "NA", Aircraft.damage != "Unknown")
+```
+
+ -Remove Nulls and unknown from Engine.Type column
+```{r}
+#Remove na and unknown values from Amateur.Built
+sub <- sub %>% filter(Engine.Type != "N/A", Engine.Type != "NA", Engine.Type != "Unknown")
+```
+
+ -Calculate severity index rating for each indedent and then calculate rating for each US airport that is in the dataset
+```{r}
+sub$SIR <- (3.0*sub$Total.Fatal.Injuries)+(1.8*sub$Total.Serious.Injuries)+(1.3*sub$Total.Minor.Injuries) + sub$Total.Uninjured
+
+# Calculate severity index for each airport
+Airport_SIR = sub %>%
+  group_by(Airport.Code) %>%
+  summarise(Severity.Index.Rating = mean(SIR))
+
+#Change IATA.Name column to match Airport.Code column from sub
+colnames(GlobalAirportDatabase)[2] <- "Airport.Code"
+
+#Insert Latitude and Longitude columns to Airport_SIR and convert columns to numeric data type
+Airport_SIR$Latitude = NA
+Airport_SIR$Longitude = NA
+Airport_SIR$Latitude = as.numeric(as.character(Airport_SIR$Latitude))
+Airport_SIR$Longitude = as.numeric(as.character(Airport_SIR$Longitude))
+
+#Insert Airport Name column to Airport_SIR
+Airport_SIR$Airport.Name = NA
+Airport_SIR$Airport.Name = as.character(Airport_SIR$Airport.Name)
+
+new = GlobalAirportDatabase %>% filter(Country == "USA")
+new2 = select(new, c("Airport.Code", "Airport.Name", "Latitude", "Longitude"))
+new2 = new2 %>% filter(Latitude != 0, Longitude != 0, Airport.Name != 0)
+#Remove NA values from new2
+new2 = new2 %>% filter(Airport.Code != "N/A", Airport.Code != "NA")
+
+Airport_SIR = rows_patch(Airport_SIR, new2, by = c("Airport.Code"), unmatched = 'ignore')
+
+#Remove columns with NA values
+Airport_SIR = Airport_SIR %>% filter(Latitude != "N/A", Latitude != "NA")
+
+#Round SIR column
+Airport_SIR = Airport_SIR %>% mutate_at(vars(Severity.Index.Rating), funs(round(., 2)))
+```
+
+ -Reformat Event.Date to include Year and Month as seperate columns
+```{r}
+#install.packages(lubridate)
+library(lubridate)
+##Store only data from post 2001
+sub <- sub %>% filter(Event.Date > '2001-12-31')%>%
+  mutate(Event.Date = as.Date(sub$Event.Date, "%m/%d/%Y"), 
+                      Year = year(Event.Date), 
+                      Month = month(Event.Date, label = T))
+
+```
+
+
+ -Export Final Cleaned Data Set
+```{r}
+data_clean <- sub
+write.csv(data_clean, file ="../Data/Data Cleaning/Cleaned_Data.csv", row.names=FALSE)
+```
+
+
+# Exploratory Data Analysis
+
+Now that the dataset is cleaned/formatted in a manageable format, EDA can begin.
+
+We start by comparing the different categorical vs continuous variables in our dataset using a correlation matrix. Larger circles indicate strong correlation, red means negative correlation, blue means positive.
+
+## Correlation Matrix
+```{r, cache=TRUE}
+library(psych)
+
+##Remove unneccessary columns
+temp <- select(data_clean, -c(Purpose.of.flight, Event.Date, Injury.Severity, Location, Airport.Name, Make, Model, Event.Id, City, Latitude, Longitude, Airport.Code, Country, Aircraft.Category, FAR.Description, Report.Status))
+
+##Factorize categorical variables
+temp$Aircraft.damage <- unclass(factor(temp$Aircraft.damage))
+temp$Amateur.Built <- unclass(factor(temp$Amateur.Built))
+temp$Engine.Type <- unclass(factor(temp$Engine.Type))
+temp$Weather.Condition <- unclass(factor(temp$Weather.Condition))
+temp$Broad.phase.of.flight <- unclass(factor(temp$Broad.phase.of.flight))
+
+temp <- na.omit(temp)
+temp <- as.data.frame(lapply(temp,as.numeric))
+
+##Create mixed correlation matrix
+corrmatrix <- mixedCor(data = temp, c = c(3,5:8,11), p = c(1,2,4,9),
+             use="pairwise",method="pearson")$rho
+
+##Plot correlation matrix
+library(corrplot)
+corrplot(corrmatrix, type = "upper", order = "hclust", 
+         tl.col = "black", tl.srt = 45)
+```
+
+From a quick glance at the correlation matrix above, Weather condition has a strong correlation to total Fatal injuries, as well as aircraft damage. SIR has a high relation to Total Fatal injuries, which makes sense because the Severity index rating is highly influenced by fatal injuries in the equation.
+
+
+## Accident Hotspot Map
+
+Next, we will compare incident severity/count by location using a heatmap of the United States to identify trends and key locations where accidents have occured using primarily longitude/latitude.
+
+```{r, cache=TRUE}
+# install.packages("rnaturalearth")
+# install.packages("rnaturalearthdata")
+# install.packages("tidyverse")
+# install.packages("sf")
+# install.packages("rgdal")
+# install.packages("maptools")
+# install.packages("ggfortify")
+# install.packages("devtools")
+library(maptools)
+library(ggfortify)
+library(ggplot2)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+#devtools::install_github("ropensci/rnaturalearthhires")
+library("rnaturalearthdata")
+
+usa <- ne_states(country="united states of america", returnclass = 'sf')
+
+lat_long_df = data.frame(sub$Longitude,sub$Latitude,sub$Event.Id)
+colnames(lat_long_df) <- c('Longitude','Latitude','Event.Id')
+lat_long_df <- lat_long_df %>% filter(Longitude != "N/A", Longitude != "NA", Latitude != "N/A", Latitude != "NA")
+
+#try using geom_point
+USA_hotspots = ggplot(data = usa) +
+  geom_sf() +
+  geom_point(data = lat_long_df, aes(x = Longitude, y = Latitude), size = 0.1, 
+             shape = 1, fill = "red")  + coord_sf(xlim=c(-125,-67), ylim=c(24,49), expand=T)
+USA_hotspots
+
+```
+
+This initial hotspot map shows us that there are accident hotspots in major metropolitan areas across the United States. Some of the big hotspots of accidents along the west coast are in Seattle, Portland, the Bay Area and generally, southern California. We can also see some big hotspots in Chicago, the New York/New Jersey area and all over southern Florida.
+
+```{r, cache=TRUE}
+CA_hotspots = ggplot(data = usa) +
+  geom_sf() +
+  geom_point(data = lat_long_df, aes(x = Longitude, y = Latitude), size = 0.5, 
+             shape = 1, fill = "red")  + coord_sf(xlim=c(-125,-114), ylim=c(32, 42), expand=T)
+CA_hotspots
+```
+
+When taking a look at California individually we can see a significant cluster in the greater los angeles area.
+
+```{r, cache=TRUE}
+FL_hotspots = ggplot(data = usa) +
+  geom_sf() +
+  geom_point(data = lat_long_df, aes(x = Longitude, y = Latitude), size = 0.5, 
+             shape = 1, fill = "red")  + coord_sf(xlim=c(-88,-80), ylim=c(24, 31), expand=T)
+FL_hotspots
+```
+
+Florida has incidents spread all across the state, with a small hotspot in the Miami area.
+
+```{r, cache=TRUE}
+WA_hotspots = ggplot(data = usa) +
+  geom_sf() +
+  geom_point(data = lat_long_df, aes(x = Longitude, y = Latitude), size = 0.5, 
+             shape = 1, fill = "red")  + coord_sf(xlim=c(-125,-117), ylim=c(45, 49), expand=T)
+WA_hotspots
+```
+
+Here we can see more incidents clustered around the puget sound in Washington.
+
+
+## Counts of Key Variables
+
+Next, we will dive further into our exploratory analysis by visualizing the number of accidents against different key variables to get an understanding of which variables may be significant.
+
+```{r, cache=TRUE}
+# Combine all Fatal into one category
+sub$Injury.Severity[sub$Injury.Severity == "Fatal(1)"] <- "Fatal"
+sub$Injury.Severity[sub$Injury.Severity == "Fatal(2)"] <- "Fatal"
+sub$Injury.Severity[sub$Injury.Severity == "Fatal(3)"] <- "Fatal"
+sub$Injury.Severity[sub$Injury.Severity == "Fatal(4)"] <- "Fatal"
+sub$Injury.Severity[sub$Injury.Severity == "Fatal(5)"] <- "Fatal"
+sub$Injury.Severity[sub$Injury.Severity == "Fatal(6)"] <- "Fatal"
+sub$Injury.Severity[sub$Injury.Severity == "Fatal(7)"] <- "Fatal"
+sub$Injury.Severity[sub$Injury.Severity == "Fatal(8)"] <- "Fatal"
+sub$Injury.Severity[sub$Injury.Severity == "Fatal(10)"] <- "Fatal"
+sub$Injury.Severity[sub$Injury.Severity == "Fatal(13)"] <- "Fatal"
+sub$Injury.Severity[sub$Injury.Severity == "Fatal(20)"] <- "Fatal"
+sub$Injury.Severity[sub$Injury.Severity == "Fatal(21)"] <- "Fatal"
+
+#Remove na and incident values from injury severity column
+sub <- sub %>% filter(Injury.Severity != "N/A", Injury.Severity != "NA", Injury.Severity != "Incident")
+
+#Plot count of incidents by injury severity
+ggplot(sub, aes(x=Injury.Severity, fill=Injury.Severity)) + geom_bar() + theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust=1))
+
+#Plot count of incidents by Aircraft damage
+ggplot(sub, aes(x=Aircraft.damage, fill=Aircraft.damage)) + geom_bar()
+
+```
+
+From the above plots we can see that the majority of incidents resulted in non-fatal injuries and substantial aircraft damage.
+
+```{r, cache=TRUE}
+#Plot count of incidents by Amateur.built
+ggplot(sub, aes(x=Amateur.Built, fill=Amateur.Built)) + geom_bar()
+```
+
+The majority of airplanes were not amateur built, with roughtly 7,500 aircraft built by an amateur.
+
+```{r, cache=TRUE}
+#Plot count of incidents by engine type
+ggplot(sub, aes(x=Engine.Type, fill=Engine.Type)) + geom_bar()
+
+#Plot count of incidents by number of engines
+ggplot(sub, aes(x=Number.of.Engines, fill=Number.of.Engines)) + geom_bar()
+```
+
+A substantial majority of incidents occurred in airplanes with a reciprocating engine and in airplanes with only one engine. These results are as expected since most small aircraft have 1 reciprocating engine.
+
+```{r, cache=TRUE}
+#Plot count of incidents by phase of flight
+ggplot(sub, aes(x=Broad.phase.of.flight, fill=Broad.phase.of.flight)) + geom_bar() + theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust=1))
+```
+
+In this plot we can see that most incidents occured during either takeoff or landing.
+
+```{r, cache=TRUE}
+#Plot count of incidents by pourpose of flight
+ggplot(sub, aes(x=Purpose.of.flight)) + geom_bar() + theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust=1))
+```
+
+Here we see that most incidents occurred when the airplane was being used for personal use. 
+
+
+## Weather vs Fatal Injuries
+
+Next, we will take a look at how weather affects the number of fatal injuries.
+
+```{r}
+library(ggplot2)
+
+data_clean %>%
+  mutate(Weather.Condition = case_when(Weather.Condition == "IMC" ~ "Instrument Meterological Conditions (IMC)", Weather.Condition == "VMC" ~ "Visual Meteorological Conditions (VMC)"))%>%
+  drop_na()%>%
+  select(Weather.Condition, Total.Fatal.Injuries)%>%
+  group_by(Weather.Condition, Total.Fatal.Injuries)%>%
+  summarise(n= n())%>%
+  mutate(frequency = n/sum(n))%>%
+  ggplot(aes(y = frequency, x = Weather.Condition, fill= Total.Fatal.Injuries))+geom_bar(stat = 'identity', position = 'stack') +labs(title = "Did the weather visibility affect the survival rate for passengers?", y = "Frequency", x = "Weather Condition" )
+
+```
+
+During the times that caused fatalities you can see that the pilots used IMC had a higher fatality than pilots that were controlling the plan themselves. In this case, was the error cased by the weather conditions or was it caused by pilot error or instrument error?
+
+```{r, cache=TRUE}
+# install.packages(stringr)
+library(stringr)
+
+data_clean %>%
+  mutate_at(vars(Total.Fatal.Injuries, Total.Serious.Injuries, Total.Minor.Injuries, Total.Uninjured), ~as.numeric(as.character(.)))%>%
+  pivot_longer(cols = starts_with("Total"), names_to = "Injuries", values_to = "Each")%>%
+  mutate(Injuries = str_remove(Injuries, "Total"))%>%
+  drop_na()%>%
+  group_by(Weather.Condition, Injuries)%>%
+  summarise(n = sum(Each, na.rm = T))%>%
+  mutate(frequency = n/sum(n))%>%
+  ggplot(aes(x=Weather.Condition, y=frequency, fill = Injuries))+geom_bar(stat = "identity", position = "stack")+ scale_fill_brewer(palette = "Reds")+coord_flip()+labs(title = "Did the weather visibility affect the survival/injury rate for passengers?", x = "Weather Condition", y = "Frequency" )
+
+```
+
+The weather conditions can have a major effect on flights. As you can see during the times that pilots were controlling the instrument(Aircraft) they had more unijured passengers compared to flights that were controlled by the instrument. When the insturment was being controlled by the pilot you can see that 75% were uninjured during the accident. However, when the instrument controlled itself almost 50% where fatalities.
+
+```{r, cache=TRUE}
+
+data_clean %>%
+  mutate(Weather.Condition = case_when(Weather.Condition == "IMC" ~ "Instrument Meterological Conditions (IMC)", Weather.Condition == "VMC" ~ "Visual Meteorological Conditions (VMC)"))%>%
+  drop_na()%>%
+  ggplot(aes(x=Year, fill= Weather.Condition))+geom_bar()+
+  scale_x_continuous(limits = c(2001, 2023), breaks = seq(2001, 2023, 1))+ theme(axis.text.x = element_text(angle = 90))+labs(title = "Weather condition related accidents from years 2001-2023", y = "", x = "Years")
+
+
+```
+
+As you can see based on the information the weather conditions were analyzed as IMC and VMC. These are terms that are used when describing the weather conditions during flights. VMC means that during flight pilots have visibility and can rely on them to control the plane. IMC means that pilots need to rely on the plane(instrument) to control the flight. As you can see that data that was pulled shows years 2002 to 2007 had information on the type of weather that was presented during the accidents. Out of the years pilots maintained the VMC for most of the flights and during 2005-2006 the weather had shifted to where they had to use IMC.
+
+
+```{r, cache =TRUE}
+data_clean %>%
+  mutate(Weather.Condition = case_when(Weather.Condition == "IMC" ~ "IMC", Weather.Condition == "VMC" ~ "VMC"))%>%
+  drop_na()%>%
+  group_by(Broad.phase.of.flight, Weather.Condition)%>%
+  summarise(n = n())%>%
+  mutate(freq = n/sum(n))%>%
+  ggplot(aes(x= Weather.Condition, y = freq, fill = Weather.Condition))+geom_bar(stat = "identity")+facet_wrap("Broad.phase.of.flight")+labs(title = "Weather conditions of different phases of flight accidents", y = "Frequency", x = "Weather Conditions")
+
+
+```
+
+During the many different phases of flights, you can see that VMC is the primary condition. However, during the option listed as other and unknown in the reports seem to be the highest. During takoff, maneuvering, approach and climb, you can see that they did require the instrument (airplane) to take control because of the weather conditions.
+
+## Aircraft Characteristics vs Severity
+
+Since a large amount of incidents occur with commercial aircraft, we will look at measurements of incident severity by manufacturer.
+```{r}
+Manufacturers <- (data_clean %>% group_by(Make) %>% count()) %>% filter(n > 100)
+
+##Manufacturer vs SIR
+new <- data_clean %>% filter(Make %in% Manufacturers$Make)
+ggplot(data=new, mapping=aes(y = SIR, x = Make, fill = Make)) +
+  geom_boxplot(show.legend = FALSE) +
+  ylim(min = 0, max = 10) +
+  theme(axis.text.x = element_text(angle = 90, hjust = .5)) +
+  labs(title = "Severity Index Rating for Various Large Manufacturers", y = "SIR", x = "Manufacturer" )
+```
+Beech, Cirrus, and Mooney tend to have more frequently severe accidents than other manufacturers.
+
+# Conclusion/Findings
+
+Through this exploratory data analysis we found the below patterns in the dataset.
+
+-  A majority of accidents occur in major population centers.
+
+-  Weather condition has a high influence on both fatality rate and aircraft damage.
+
+- Amateur built aircraft tend to have fewer engines, and surprisingly less fatal incidents.
+
+- A vast majority of incidents have no fatal injuries.
+
+- Most incidents involved planes which were commercial built.
+
+- Most incidents occur during takeoff/landing.
+
+- Incidents involving Takeoffs/Landings/Maneuverings typically have more adverse weather conditions. During IMC, instruments are used to pilot the aircraft, which is more difficult during these phases of flight.
+
+- Beech, Cirrus, and Mooney tend to have more frequently severe accidents than other manufacturers.
