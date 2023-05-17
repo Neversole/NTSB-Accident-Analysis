@@ -1,0 +1,14 @@
+readr
+dplyr
+tidyr
+lubridate
+psych
+corrplot
+sp
+maptools
+ggplot2
+ggfortify
+sf
+rnaturalearth
+rnaturalearthdata
+stringr
