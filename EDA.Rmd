@@ -42,9 +42,9 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 
 ```{r}
 library(readr)
-GlobalAirportDatabase <- read_csv("../Data/GlobalAirportDatabase.csv")
-AviationData_Reshaped <- read_csv("../Data/Additional Datasets/AviationData_Reshaped.csv")
-List_of_commercial_jet_airliners <- read_csv("../Data/Additional Datasets/List_of_commercial_jet_airliners.csv")
+GlobalAirportDatabase <- read_csv("../NTSB-Aircraft_Accidents/Datasets/GlobalAirportDatabase.csv")
+AviationData_Reshaped <- read_csv("../NTSB-Aircraft_Accidents/Datasets/AviationData_Reshaped.csv")
+List_of_commercial_jet_airliners <- read_csv("../NTSB-Aircraft_Accidents/Datasets/List_of_commercial_jet_airliners.csv")
 attach(AviationData_Reshaped)
 library(dplyr)
 library(tidyr)
@@ -79,7 +79,7 @@ sub <- sub %>% filter(Make != "N/A", Make != "NA", Model != "N/A", Model != "NA"
 
  -Remove aircraft which have been designated as commercial aircraft (using additional dataset)
 ```{r}
-List_of_commercial_jet_airliners <- read_csv("/cloud/project/Data/Additional Datasets/List_of_commercial_jet_airliners.csv")
+List_of_commercial_jet_airliners <- read_csv("../NTSB-Aircraft_Accidents/Datasets/List_of_commercial_jet_airliners.csv")
 
 attach(List_of_commercial_jet_airliners)
 new <- sub %>% filter(Model %in% List_of_commercial_jet_airliners$Model)
@@ -186,7 +186,7 @@ sub <- sub %>% filter(Event.Date > '2001-12-31')%>%
  -Export Final Cleaned Data Set
 ```{r}
 data_clean <- sub
-write.csv(data_clean, file ="../Data/Data Cleaning/Cleaned_Data.csv", row.names=FALSE)
+write.csv(data_clean, file ="../NTSB-Aircraft_Accidents/Datasets/Cleaned_Data.csv", row.names=FALSE)
 ```
 
 
@@ -231,6 +231,7 @@ From a quick glance at the correlation matrix above, Weather condition has a str
 Next, we will compare incident severity/count by location using a heatmap of the United States to identify trends and key locations where accidents have occured using primarily longitude/latitude.
 
 ```{r, cache=TRUE}
+# devtools::install_github("ropensci/rnaturalearthhires")
 # install.packages("rnaturalearth")
 # install.packages("rnaturalearthdata")
 # install.packages("tidyverse")
@@ -245,7 +246,6 @@ library(ggplot2)
 library(sf)
 library(rnaturalearth)
 library(rnaturalearthdata)
-#devtools::install_github("ropensci/rnaturalearthhires")
 library("rnaturalearthdata")
 
 usa <- ne_states(country="united states of america", returnclass = 'sf')
