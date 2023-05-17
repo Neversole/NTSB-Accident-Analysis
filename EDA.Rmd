@@ -2,10 +2,7 @@
 title: "NTSB Aviation Data - Exploratory Data Analysis"
 author: "Team 9"
 date: "2023-02-20"
-output:
-  #word_document: default
-  #html_document: default
-  pdf_document: default
+output: html_document
 ---
 
 # Intro/Explanation
