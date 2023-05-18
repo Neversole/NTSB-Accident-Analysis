@@ -25,11 +25,9 @@ library(sf)
 library(rnaturalearth)
 library(rnaturalearthdata)
 library(tidyr)
-addResourcePath("image", "/cloud/project/www")
 
-
-data_clean <- read_csv("../Data/Data Cleaning/Cleaned_Data.csv")
-Airport_SIR <- read_csv("../Data/Airport_SIR.csv")
+data_clean <- read_csv("../NTSB-Aircraft_Accidents/Datasets/Cleaned_Data.csv")
+Airport_SIR <- read_csv("../NTSB-Aircraft_Accidents/Datasets/Airport_SIR.csv")
 ```
 
 # Webapp Code
