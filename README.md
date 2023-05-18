@@ -10,7 +10,7 @@ This repo contains my capstone group project for my Bachelor of Science in Data 
 This folder contains all of the datasets used in this project
 
 ### EDA.md
-This is the viewable rmarkdown file of the Exploratory data analysis that we performed on the datasets.
+This is the viewable rmarkdown file of the data cleaning and exploratory data analysis that we performed on the datasets.
 
 ### EDA.Rmd
 The source file of the viewable EDA.md document.
