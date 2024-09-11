@@ -1,7 +1,7 @@
 # NTSB Aircraft Accident Analysis
 -------------------------
 
-This repo contains my capstone group project for my Bachelor of Science in Data Analytics. The objective of this project was to use the National Transportation Safety Board's aircraft incident dataset to identify factors that contribute to small airplane accidents, identify hotspots where accidents occur and calulate an accident severity index rating for each U.S. airport. Our final product is a shiny web app that displays our findings.
+This repo contains my capstone group project for my Bachelor of Science in Data Analytics. The objective of this project was to use the National Transportation Safety Board's aircraft incident dataset to identify factors that contribute to small airplane accidents, identify hotspots where accidents occur, and calculate an accident severity index rating for each U.S. airport. Our final product is a shiny web app that displays our findings.
 
 -------------------------
 
